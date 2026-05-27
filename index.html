@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WaveAds Player</title>
+
+  <!-- Google Analytics GA4 — replace G-XXXXXXXXXX with your Measurement ID -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){ dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'G-XXXXXXXXXX');
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+
+    #player {
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Invisible overlay — prevents any tap from triggering browser UI */
+    #overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 10;
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+
+  <video id="player" autoplay muted playsinline></video>
+  <div id="overlay"></div>
+
+  <script>
+    // ─────────────────────────────────────────────
+    // PLAYLIST — 4 businesses
+    // Google Drive direct stream URLs (converted from share links)
+    // Format: https://drive.google.com/uc?export=download&id=FILE_ID
+    // ─────────────────────────────────────────────
+    const playlist = [
+      {
+        name: "Kono's North Shore",
+        // Original share: https://drive.google.com/file/d/1r8jn4BYEk2FZdXX4_Y7iAXRbXsVyHiMm/view
+        url: "https://drive.google.com/uc?export=download&id=1r8jn4BYEk2FZdXX4_Y7iAXRbXsVyHiMm"
+      },
+      {
+        name: "The Surfing Pig",
+        // Original share: https://drive.google.com/file/d/1SRBc5v4JyWBuHxClVC-Q30NTzEp1OLmH/view
+        url: "https://drive.google.com/uc?export=download&id=1SRBc5v4JyWBuHxClVC-Q30NTzEp1OLmH"
+      },
+      {
+        name: "Paia",
+        // Original share: https://drive.google.com/file/d/1LTfIoBcIE-rdFUkXQLoj78tQa7BJSiTK/view
+        url: "https://drive.google.com/uc?export=download&id=1LTfIoBcIE-rdFUkXQLoj78tQa7BJSiTK"
+      },
+      {
+        name: "La Plena",
+        // Original share: https://drive.google.com/file/d/1ZzuQ9z9fW-wcok4nb1KvPjDxXxJsGDdA/view
+        url: "https://drive.google.com/uc?export=download&id=1ZzuQ9z9fW-wcok4nb1KvPjDxXxJsGDdA"
+      }
+    ];
+
+    // ─────────────────────────────────────────────
+    // PLAYER LOGIC
+    // ─────────────────────────────────────────────
+    const video = document.getElementById('player');
+    let currentIndex = 0;
+
+    function loadVideo(index) {
+      const item = playlist[index];
+      video.src = item.url;
+      video.load();
+      video.play().catch(() => {
+        // Autoplay blocked — retry on first user interaction
+        document.addEventListener('click', () => video.play(), { once: true });
+        document.addEventListener('touchstart', () => video.play(), { once: true });
+      });
+    }
+
+    // When a video ends → fire GA4 event → load next video
+    video.addEventListener('ended', () => {
+      const item = playlist[currentIndex];
+
+      // ── GA4 tracking event ──
+      gtag('event', 'video_complete', {
+        business_name: item.name,
+        video_index: currentIndex + 1,
+        tablet_id: getTabletId()
+      });
+
+      // ── Advance to next video ──
+      currentIndex = (currentIndex + 1) % playlist.length;
+      loadVideo(currentIndex);
+    });
+
+    // Track video start (optional — useful to confirm playback)
+    video.addEventListener('play', () => {
+      const item = playlist[currentIndex];
+      gtag('event', 'video_start', {
+        business_name: item.name,
+        video_index: currentIndex + 1,
+        tablet_id: getTabletId()
+      });
+    });
+
+    // Track errors (useful for debugging)
+    video.addEventListener('error', () => {
+      const item = playlist[currentIndex];
+      gtag('event', 'video_error', {
+        business_name: item.name,
+        error_code: video.error ? video.error.code : 'unknown',
+        tablet_id: getTabletId()
+      });
+      // Skip to next video after 3 seconds if error
+      setTimeout(() => {
+        currentIndex = (currentIndex + 1) % playlist.length;
+        loadVideo(currentIndex);
+      }, 3000);
+    });
+
+    // ─────────────────────────────────────────────
+    // TABLET ID — persistent per device
+    // Stored in localStorage so it survives page reloads
+    // ─────────────────────────────────────────────
+    function getTabletId() {
+      let id = localStorage.getItem('waveads_tablet_id');
+      if (!id) {
+        id = 'tablet_' + Math.random().toString(36).substr(2, 8).toUpperCase();
+        localStorage.setItem('waveads_tablet_id', id);
+      }
+      return id;
+    }
+
+    // ─────────────────────────────────────────────
+    // START
+    // ─────────────────────────────────────────────
+    loadVideo(0);
+  </script>
+
+</body>
+</html>
