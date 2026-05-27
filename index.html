@@ -136,6 +136,12 @@
       });
 
       event.target.playVideo();
+
+      // Start muted (required for autoplay), then unmute after 1 second
+      setTimeout(() => {
+        event.target.unMute();
+        event.target.setVolume(100);
+      }, 1000);
     }
 
     function onPlayerStateChange(event) {
