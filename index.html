@@ -32,7 +32,7 @@
       background: #000;
     }
 
-    /* Invisible overlay — prevents any tap from triggering browser UI */
+    /* Invisible overlay — prevents taps from triggering browser UI */
     #overlay {
       position: fixed;
       top: 0; left: 0;
@@ -53,35 +53,46 @@
       z-index: 8;
       pointer-events: none;
     }
+
+    /* Loading indicator */
+    #loading-bar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 3px;
+      width: 0%;
+      background: #2EC4B6;
+      z-index: 20;
+      transition: width 0.3s ease;
+    }
   </style>
 </head>
 <body>
 
-  <video id="player" autoplay muted playsinline preload="auto"></video>
+  <div id="loading-bar"></div>
+  <video id="player" autoplay muted playsinline></video>
   <div id="business-label"></div>
   <div id="overlay"></div>
 
   <script>
     // ─────────────────────────────────────────────
     // PLAYLIST — 4 pilot businesses
-    // Direct streaming URLs via drive.usercontent.google.com
     // ─────────────────────────────────────────────
     const playlist = [
       {
         name: "Kono's North Shore",
-        url: "https://drive.usercontent.google.com/download?id=1r8jn4BYEk2FZdXX4_Y7iAXRbXsVyHiMm&export=download"
+        fileId: "1r8jn4BYEk2FZdXX4_Y7iAXRbXsVyHiMm"
       },
       {
         name: "The Surfing Pig",
-        url: "https://drive.usercontent.google.com/download?id=1SRBc5v4JyWBuHxClVC-Q30NTzEp1OLmH&export=download"
+        fileId: "1SRBc5v4JyWBuHxClVC-Q30NTzEp1OLmH"
       },
       {
         name: "Paia",
-        url: "https://drive.usercontent.google.com/download?id=1LTfIoBcIE-rdFUkXQLoj78tQa7BJSiTK&export=download"
+        fileId: "1LTfIoBcIE-rdFUkXQLoj78tQa7BJSiTK"
       },
       {
         name: "La Plena",
-        url: "https://drive.usercontent.google.com/download?id=1ZzuQ9z9fW-wcok4nb1KvPjDxXxJsGDdA&export=download"
+        fileId: "1ZzuQ9z9fW-wcok4nb1KvPjDxXxJsGDdA"
       }
     ];
 
@@ -100,48 +111,84 @@
     // ─────────────────────────────────────────────
     // PLAYER LOGIC
     // ─────────────────────────────────────────────
-    const video = document.getElementById('player');
-    const label = document.getElementById('business-label');
-    let currentIndex = 0;
+    const video       = document.getElementById('player');
+    const label       = document.getElementById('business-label');
+    const loadingBar  = document.getElementById('loading-bar');
+    let currentIndex  = 0;
+    let currentBlobUrl = null;
 
-    function loadVideo(index) {
-      const item = playlist[index];
-      label.textContent = item.name;
-      video.src = item.url;
-      video.load();
-
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          // Autoplay blocked — wait for first tap
-          document.addEventListener('click',      () => video.play(), { once: true });
-          document.addEventListener('touchstart', () => video.play(), { once: true });
-        });
-      }
-
-      // GA4: video_start
-      gtag('event', 'video_start', {
-        business_name: item.name,
-        video_index: index + 1,
-        tablet_id: getTabletId()
-      });
+    // Build the direct streaming URL for a Google Drive file
+    function driveUrl(fileId) {
+      return `https://drive.usercontent.google.com/download?id=${fileId}&export=download`;
     }
 
-    // When a video ends → fire GA4 → load next video
+    // Fetch video as blob to bypass Content-Disposition: attachment restriction
+    async function loadVideo(index) {
+      const item = playlist[index];
+      label.textContent = item.name;
+
+      // Show loading bar
+      loadingBar.style.width = '30%';
+
+      try {
+        const response = await fetch(driveUrl(item.fileId));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        loadingBar.style.width = '70%';
+        const blob = await response.blob();
+        loadingBar.style.width = '100%';
+
+        // Revoke previous blob URL to free memory
+        if (currentBlobUrl) {
+          URL.revokeObjectURL(currentBlobUrl);
+        }
+
+        currentBlobUrl = URL.createObjectURL(blob);
+        video.src = currentBlobUrl;
+        video.load();
+
+        setTimeout(() => { loadingBar.style.width = '0%'; }, 400);
+
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {
+            // Autoplay blocked — wait for first interaction
+            document.addEventListener('click',      () => video.play(), { once: true });
+            document.addEventListener('touchstart', () => video.play(), { once: true });
+          });
+        }
+
+        // GA4: video_start
+        gtag('event', 'video_start', {
+          business_name: item.name,
+          video_index: index + 1,
+          tablet_id: getTabletId()
+        });
+
+      } catch (err) {
+        console.error('Failed to load video:', err);
+        loadingBar.style.width = '0%';
+        // Skip to next on error
+        setTimeout(() => {
+          currentIndex = (currentIndex + 1) % playlist.length;
+          loadVideo(currentIndex);
+        }, 3000);
+      }
+    }
+
+    // When video ends → GA4 → load next
     video.addEventListener('ended', () => {
       const item = playlist[currentIndex];
-
       gtag('event', 'video_complete', {
         business_name: item.name,
         video_index: currentIndex + 1,
         tablet_id: getTabletId()
       });
-
       currentIndex = (currentIndex + 1) % playlist.length;
       loadVideo(currentIndex);
     });
 
-    // On error → skip to next video after 3 seconds
+    // On video error → skip to next
     video.addEventListener('error', () => {
       const item = playlist[currentIndex];
       gtag('event', 'video_error', {
