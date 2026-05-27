@@ -24,28 +24,12 @@
       overflow: hidden;
     }
 
-    #player-frame {
+    #player {
       width: 100vw;
       height: 100vh;
-      border: none;
+      object-fit: contain;
       display: block;
-    }
-
-    /* Loading screen shown between videos */
-    #loading {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
       background: #000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 5;
-    }
-
-    #loading img {
-      width: 180px;
-      opacity: 0.7;
     }
 
     /* Invisible overlay — prevents any tap from triggering browser UI */
@@ -57,12 +41,12 @@
       background: transparent;
     }
 
-    /* Business name watermark (bottom-left) */
+    /* Business name watermark */
     #business-label {
       position: fixed;
       bottom: 18px;
       left: 22px;
-      color: rgba(255,255,255,0.55);
+      color: rgba(255,255,255,0.6);
       font-family: Arial, sans-serif;
       font-size: 13px;
       letter-spacing: 0.5px;
@@ -73,48 +57,31 @@
 </head>
 <body>
 
-  <!-- Loading splash -->
-  <div id="loading">
-    <svg width="200" height="60" viewBox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
-      <text x="10" y="45" font-family="Arial, sans-serif" font-size="38" font-weight="bold" fill="#2EC4B6">WaveAds</text>
-    </svg>
-  </div>
-
-  <!-- Google Drive iframe player -->
-  <iframe id="player-frame" allowfullscreen allow="autoplay"></iframe>
-
-  <!-- Business name watermark -->
+  <video id="player" autoplay muted playsinline preload="auto"></video>
   <div id="business-label"></div>
-
-  <!-- Touch blocker -->
   <div id="overlay"></div>
 
   <script>
     // ─────────────────────────────────────────────
     // PLAYLIST — 4 pilot businesses
-    // Google Drive preview embed URLs
-    // Format: https://drive.google.com/file/d/FILE_ID/preview
+    // Direct streaming URLs via drive.usercontent.google.com
     // ─────────────────────────────────────────────
     const playlist = [
       {
         name: "Kono's North Shore",
-        fileId: "1r8jn4BYEk2FZdXX4_Y7iAXRbXsVyHiMm",
-        duration: 30   // seconds — adjust to match actual video length
+        url: "https://drive.usercontent.google.com/download?id=1r8jn4BYEk2FZdXX4_Y7iAXRbXsVyHiMm&export=download"
       },
       {
         name: "The Surfing Pig",
-        fileId: "1SRBc5v4JyWBuHxClVC-Q30NTzEp1OLmH",
-        duration: 30
+        url: "https://drive.usercontent.google.com/download?id=1SRBc5v4JyWBuHxClVC-Q30NTzEp1OLmH&export=download"
       },
       {
         name: "Paia",
-        fileId: "1LTfIoBcIE-rdFUkXQLoj78tQa7BJSiTK",
-        duration: 30
+        url: "https://drive.usercontent.google.com/download?id=1LTfIoBcIE-rdFUkXQLoj78tQa7BJSiTK&export=download"
       },
       {
         name: "La Plena",
-        fileId: "1ZzuQ9z9fW-wcok4nb1KvPjDxXxJsGDdA",
-        duration: 30
+        url: "https://drive.usercontent.google.com/download?id=1ZzuQ9z9fW-wcok4nb1KvPjDxXxJsGDdA&export=download"
       }
     ];
 
@@ -133,54 +100,60 @@
     // ─────────────────────────────────────────────
     // PLAYER LOGIC
     // ─────────────────────────────────────────────
-    const frame      = document.getElementById('player-frame');
-    const loading    = document.getElementById('loading');
-    const label      = document.getElementById('business-label');
+    const video = document.getElementById('player');
+    const label = document.getElementById('business-label');
     let currentIndex = 0;
-    let timer        = null;
 
     function loadVideo(index) {
       const item = playlist[index];
-
-      // Show loading briefly
-      loading.style.display = 'flex';
-
-      // Build Google Drive preview embed URL
-      // ?rm=minimal hides the Drive toolbar; autoplay=1 starts playback
-      const embedUrl = `https://drive.google.com/file/d/${item.fileId}/preview?rm=minimal`;
-
-      frame.src = embedUrl;
       label.textContent = item.name;
+      video.src = item.url;
+      video.load();
 
-      // Hide loading after 1.5 s (iframe starts rendering)
-      setTimeout(() => { loading.style.display = 'none'; }, 1500);
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          // Autoplay blocked — wait for first tap
+          document.addEventListener('click',      () => video.play(), { once: true });
+          document.addEventListener('touchstart', () => video.play(), { once: true });
+        });
+      }
 
-      // Fire GA4 video_start
+      // GA4: video_start
       gtag('event', 'video_start', {
         business_name: item.name,
         video_index: index + 1,
         tablet_id: getTabletId()
       });
-
-      // Schedule advance to next video after duration
-      clearTimeout(timer);
-      timer = setTimeout(() => advanceVideo(index), item.duration * 1000);
     }
 
-    function advanceVideo(completedIndex) {
-      const item = playlist[completedIndex];
+    // When a video ends → fire GA4 → load next video
+    video.addEventListener('ended', () => {
+      const item = playlist[currentIndex];
 
-      // Fire GA4 video_complete
       gtag('event', 'video_complete', {
         business_name: item.name,
-        video_index: completedIndex + 1,
+        video_index: currentIndex + 1,
         tablet_id: getTabletId()
       });
 
-      // Move to next
-      currentIndex = (completedIndex + 1) % playlist.length;
+      currentIndex = (currentIndex + 1) % playlist.length;
       loadVideo(currentIndex);
-    }
+    });
+
+    // On error → skip to next video after 3 seconds
+    video.addEventListener('error', () => {
+      const item = playlist[currentIndex];
+      gtag('event', 'video_error', {
+        business_name: item.name,
+        error_code: video.error ? video.error.code : 'unknown',
+        tablet_id: getTabletId()
+      });
+      setTimeout(() => {
+        currentIndex = (currentIndex + 1) % playlist.length;
+        loadVideo(currentIndex);
+      }, 3000);
+    });
 
     // ─────────────────────────────────────────────
     // START
