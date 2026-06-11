@@ -1,94 +1,108 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WaveAds Player</title>
-
-  <!-- Google Analytics GA4 -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-3RV187JM56"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){ dataLayer.push(arguments); }
-    gtag('js', new Date());
-    gtag('config', 'G-3RV187JM56');
-  </script>
-
-  <!-- YouTube IFrame API -->
-  <script src="https://www.youtube.com/iframe_api"></script>
-
-  <style>
+ <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
 
-    html, body {
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-    }
-
-    /* Both players sit on top of each other, full screen */
     .yt-wrap {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
+      position: fixed; top: 0; left: 0;
+      width: 100vw; height: 100vh;
       background: #000;
       transition: opacity 0.4s ease;
     }
-
-    .yt-wrap iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-
+    .yt-wrap iframe { width: 100%; height: 100%; border: none; }
     #wrap-a { z-index: 1; opacity: 1; }
     #wrap-b { z-index: 2; opacity: 0; }
 
-    /* Invisible overlay — blocks YouTube UI */
     #overlay {
-      position: fixed;
-      top: 0; left: 0;
+      position: fixed; top: 0; left: 0;
       width: 100%; height: 100%;
-      z-index: 10;
-      background: transparent;
+      z-index: 10; background: transparent;
     }
 
-    /* Sound toggle button */
     #sound-btn {
-      position: fixed;
-      bottom: 14px;
-      right: 18px;
-      z-index: 20;
+      position: fixed; bottom: 14px; right: 18px; z-index: 20;
       background: rgba(0,0,0,0.5);
       border: 1px solid rgba(255,255,255,0.3);
-      border-radius: 50%;
-      width: 42px;
-      height: 42px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      border-radius: 50%; width: 42px; height: 42px;
+      cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
       transition: background 0.2s;
     }
     #sound-btn:hover { background: rgba(0,0,0,0.75); }
     #sound-btn svg { width: 22px; height: 22px; fill: white; }
+
+    /* ── NOVO: Consent screen ── */
+    #consent-screen {
+      position: fixed; top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: #000;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+      transition: opacity 0.5s ease;
+    }
+    #consent-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #consent-logo {
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+    }
+    #consent-tagline {
+      font-size: 18px;
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 48px;
+      max-width: 480px;
+      line-height: 1.5;
+    }
+    #consent-btn {
+      background: #ff6b35;
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      padding: 18px 48px;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: background 0.2s, transform 0.1s;
+    }
+    #consent-btn:hover { background: #e55a25; }
+    #consent-btn:active { transform: scale(0.97); }
+    #consent-skip {
+      margin-top: 20px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.35);
+      cursor: pointer;
+    }
+    #consent-skip:hover { color: rgba(255,255,255,0.6); }
   </style>
 </head>
 <body>
 
-  <!-- Player A (starts visible) -->
-  <div id="wrap-a" class="yt-wrap">
-    <div id="player-a"></div>
+  <!-- ── NOVO: Consent screen ── -->
+  <div id="consent-screen">
+    <div id="consent-logo">🌊 WaveAds</div>
+    <p id="consent-tagline">
+      Discover secret local restaurants,<br>
+      activities & exclusive deals in Hawaii!
+    </p>
+    <button id="consent-btn" onclick="startFromConsent()">
+      Show me local deals 🤙
+    </button>
+    <div id="consent-skip" onclick="startFromConsent()">Skip</div>
   </div>
 
-  <!-- Player B (starts hidden, preloads next video) -->
-  <div id="wrap-b" class="yt-wrap">
-    <div id="player-b"></div>
-  </div>
+  <div id="wrap-a" class="yt-wrap"><div id="player-a"></div></div>
+  <div id="wrap-b" class="yt-wrap"><div id="player-b"></div></div>
 
-  <!-- Sound toggle -->
   <button id="sound-btn" title="Toggle sound" onclick="toggleSound()">
     <svg id="icon-muted" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
     <svg id="icon-sound" viewBox="0 0 24 24" style="display:none"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
@@ -114,26 +128,71 @@
     }
 
     const YT_VARS = {
-      autoplay: 1,
-      mute: 1,
-      controls: 0,
-      disablekb: 1,
-      fs: 0,
-      iv_load_policy: 3,
-      modestbranding: 1,
-      rel: 0,
-      loop: 0,
-      playsinline: 1,
-      cc_load_policy: 0
+      autoplay: 1, mute: 1, controls: 0, disablekb: 1,
+      fs: 0, iv_load_policy: 3, modestbranding: 1,
+      rel: 0, loop: 0, playsinline: 1, cc_load_policy: 0
     };
 
     let playerA, playerB;
-    let activePlayer = 'a';   // which player is currently visible
+    let activePlayer = 'a';
     let currentIndex = 0;
     let isMuted = true;
-    let readyCount = 0;       // wait for both players to be ready
+    let readyCount = 0;
 
-    // ── Sound toggle ──────────────────────────────
+    // ── NOVO: estado de consent e screensaver ──
+    let consentGiven = false;
+    let screensaverActive = false;
+
+    // ── NOVO: consent button handler ──
+    function startFromConsent() {
+      consentGiven = true;
+      const screen = document.getElementById('consent-screen');
+      screen.classList.add('hidden');
+      setTimeout(() => { screen.style.display = 'none'; }, 500);
+
+      gtag('event', 'consent_given', { tablet_id: getTabletId() });
+
+      // se players já prontos, começa agora
+      if (readyCount === 2) {
+        playerA.playVideo();
+        applyMute(playerA);
+        gtag('event', 'video_start', {
+          business_name: playlist[0].name,
+          video_index: 1,
+          tablet_id: getTabletId()
+        });
+      }
+    }
+
+    // ── NOVO: Fully Kiosk screensaver events ──
+    function setupFullyKioskEvents() {
+      if (typeof fully === 'undefined') return;
+
+      fully.bind('onScreensaverStart', 'onScreensaverStart();');
+      fully.bind('onScreensaverStop',  'onScreensaverStop();');
+    }
+
+    function onScreensaverStart() {
+      screensaverActive = true;
+      const active = activePlayer === 'a' ? playerA : playerB;
+      if (active) active.pauseVideo();
+
+      gtag('event', 'screensaver_start', { tablet_id: getTabletId() });
+    }
+
+    function onScreensaverStop() {
+      screensaverActive = false;
+
+      // volta para tela de consent — força novo opt-in
+      consentGiven = false;
+      const screen = document.getElementById('consent-screen');
+      screen.style.display = 'flex';
+      screen.style.opacity = '1';
+      screen.classList.remove('hidden');
+
+      gtag('event', 'screensaver_stop', { tablet_id: getTabletId() });
+    }
+
     function toggleSound() {
       const active = activePlayer === 'a' ? playerA : playerB;
       if (!active) return;
@@ -149,21 +208,16 @@
       isMuted = !isMuted;
     }
 
-    // ── Apply mute state to a player ─────────────
     function applyMute(p) {
       if (isMuted) { p.mute(); }
       else { p.unMute(); p.setVolume(100); }
     }
 
-    // ── Crossfade to the other player ────────────
     function crossfade() {
       const wrapA = document.getElementById('wrap-a');
       const wrapB = document.getElementById('wrap-b');
-
       if (activePlayer === 'a') {
-        // B becomes front (z-index already 2), fade it in
         wrapB.style.opacity = '1';
-        // After fade completes, hide A underneath
         setTimeout(() => {
           wrapA.style.opacity = '0';
           wrapA.style.zIndex = '1';
@@ -183,15 +237,16 @@
       }
     }
 
-    // ── Preload the video AFTER next into the hidden player ──
     function preloadNext() {
       const nextIndex = (currentIndex + 1) % playlist.length;
       const hidden = activePlayer === 'a' ? playerB : playerA;
       hidden.cueVideoById(playlist[nextIndex].videoId);
     }
 
-    // ── Called when the active video ends ────────
     function onVideoEnded() {
+      // ── NOVO: não avança se screensaver ativo ou sem consent ──
+      if (screensaverActive || !consentGiven) return;
+
       const item = playlist[currentIndex];
       gtag('event', 'video_complete', {
         business_name: item.name,
@@ -201,13 +256,9 @@
 
       currentIndex = (currentIndex + 1) % playlist.length;
       const next = playlist[currentIndex];
-
-      // The hidden player already has the video cued — just play it
       const hidden = activePlayer === 'a' ? playerB : playerA;
       hidden.playVideo();
       applyMute(hidden);
-
-      // Crossfade
       crossfade();
 
       gtag('event', 'video_start', {
@@ -217,7 +268,6 @@
       });
     }
 
-    // ── YouTube API callbacks ─────────────────────
     function onYouTubeIframeAPIReady() {
       playerA = new YT.Player('player-a', {
         videoId: playlist[0].videoId,
@@ -227,9 +277,8 @@
           onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED && activePlayer === 'a') onVideoEnded(); }
         }
       });
-
       playerB = new YT.Player('player-b', {
-        videoId: playlist[1].videoId,  // preload second video
+        videoId: playlist[1].videoId,
         playerVars: { ...YT_VARS, autoplay: 0 },
         events: {
           onReady: onReadyB,
@@ -238,24 +287,16 @@
       });
     }
 
-    function onReadyA(event) {
-      readyCount++;
-      if (readyCount === 2) startPlayback();
-    }
-
-    function onReadyB(event) {
-      readyCount++;
-      if (readyCount === 2) startPlayback();
-    }
+    function onReadyA(event) { readyCount++; if (readyCount === 2) startPlayback(); }
+    function onReadyB(event) { readyCount++; if (readyCount === 2) startPlayback(); }
 
     function startPlayback() {
-      // Start player A
+      // ── NOVO: só inicia se consent já foi dado ──
+      setupFullyKioskEvents();
+      if (!consentGiven) return;
+
       playerA.playVideo();
       applyMute(playerA);
-
-      // Cue player B (already loaded with playlist[1])
-      // It will play when crossfade triggers
-
       gtag('event', 'video_start', {
         business_name: playlist[0].name,
         video_index: 1,
@@ -263,6 +304,5 @@
       });
     }
   </script>
-
 </body>
 </html>
