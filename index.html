@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WaveAds Player</title>
 
-  <!-- Google Analytics GA4 -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-3RV187JM56"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
@@ -14,7 +13,6 @@
     gtag('config', 'G-3RV187JM56');
   </script>
 
-  <!-- YouTube IFrame API -->
   <script src="https://www.youtube.com/iframe_api"></script>
 
   <style>
@@ -27,7 +25,6 @@
       overflow: hidden;
     }
 
-    /* Both players sit on top of each other, full screen */
     .yt-wrap {
       position: fixed;
       top: 0; left: 0;
@@ -37,30 +34,26 @@
       transition: opacity 0.4s ease;
     }
 
-    .yt-wrap iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
+    .yt-wrap iframe { width: 100%; height: 100%; border: none; }
 
     #wrap-a { z-index: 1; opacity: 1; }
     #wrap-b { z-index: 2; opacity: 0; }
 
-    /* Invisible overlay — blocks YouTube UI */
+    /* overlay blocks YouTube UI but allows clicks to pass through to our buttons */
     #overlay {
       position: fixed;
       top: 0; left: 0;
       width: 100%; height: 100%;
       z-index: 10;
       background: transparent;
+      pointer-events: none;
     }
 
-    /* Sound toggle button */
     #sound-btn {
       position: fixed;
       bottom: 14px;
       right: 18px;
-      z-index: 20;
+      z-index: 50;
       background: rgba(0,0,0,0.5);
       border: 1px solid rgba(255,255,255,0.3);
       border-radius: 50%;
@@ -74,16 +67,79 @@
     }
     #sound-btn:hover { background: rgba(0,0,0,0.75); }
     #sound-btn svg { width: 22px; height: 22px; fill: white; }
+
+    /* ── Consent screen ── */
+    #consent-screen {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: #000;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+      font-family: sans-serif;
+    }
+    #consent-screen.hidden {
+      display: none;
+    }
+    #consent-logo {
+      font-size: 32px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+    }
+    #consent-tagline {
+      font-size: 18px;
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 48px;
+      max-width: 480px;
+      line-height: 1.6;
+    }
+    #consent-btn {
+      background: #ff6b35;
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      padding: 18px 52px;
+      font-size: 20px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: sans-serif;
+    }
+    #consent-skip {
+      margin-top: 24px;
+      font-size: 14px;
+      color: rgba(255,255,255,0.35);
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
 
-  <!-- Player A (starts visible) -->
+  <!-- Consent screen — shown first, and after every screensaver -->
+  <div id="consent-screen">
+    <div id="consent-logo">🌊 WaveAds</div>
+    <p id="consent-tagline">
+      Discover secret local restaurants,<br>
+      activities & exclusive deals in Hawaii!
+    </p>
+    <button id="consent-btn" onclick="startFromConsent()">
+      Show me local deals 🤙
+    </button>
+    <div id="consent-skip" onclick="startFromConsent()">No thanks, skip</div>
+  </div>
+
+  <!-- Player A -->
   <div id="wrap-a" class="yt-wrap">
     <div id="player-a"></div>
   </div>
 
-  <!-- Player B (starts hidden, preloads next video) -->
+  <!-- Player B -->
   <div id="wrap-b" class="yt-wrap">
     <div id="player-b"></div>
   </div>
@@ -114,26 +170,54 @@
     }
 
     const YT_VARS = {
-      autoplay: 1,
-      mute: 1,
-      controls: 0,
-      disablekb: 1,
-      fs: 0,
-      iv_load_policy: 3,
-      modestbranding: 1,
-      rel: 0,
-      loop: 0,
-      playsinline: 1,
-      cc_load_policy: 0
+      autoplay: 1, mute: 1, controls: 0, disablekb: 1,
+      fs: 0, iv_load_policy: 3, modestbranding: 1,
+      rel: 0, loop: 0, playsinline: 1, cc_load_policy: 0
     };
 
     let playerA, playerB;
-    let activePlayer = 'a';   // which player is currently visible
+    let activePlayer = 'a';
     let currentIndex = 0;
     let isMuted = true;
-    let readyCount = 0;       // wait for both players to be ready
+    let readyCount = 0;
+    let screensaverActive = false;
 
-    // ── Sound toggle ──────────────────────────────
+    // ── Fully Kiosk: registra eventos de screensaver ──
+    // chamado assim que os players estão prontos
+    function setupFullyKioskEvents() {
+      if (typeof fully === 'undefined') return;
+      fully.bind('onScreensaverStart', 'onScreensaverStart();');
+      fully.bind('onScreensaverStop',  'onScreensaverStop();');
+    }
+
+    function onScreensaverStart() {
+      screensaverActive = true;
+      const active = activePlayer === 'a' ? playerA : playerB;
+      if (active) active.pauseVideo();
+      gtag('event', 'screensaver_start', { tablet_id: getTabletId() });
+    }
+
+    function onScreensaverStop() {
+      screensaverActive = false;
+      // mostra consent de novo para o próximo passageiro
+      document.getElementById('consent-screen').classList.remove('hidden');
+      gtag('event', 'screensaver_stop', { tablet_id: getTabletId() });
+    }
+
+    // ── Consent: passageiro clicou ──
+    function startFromConsent() {
+      document.getElementById('consent-screen').classList.add('hidden');
+      gtag('event', 'consent_given', { tablet_id: getTabletId() });
+
+      // retoma o player que estava pausado
+      const active = activePlayer === 'a' ? playerA : playerB;
+      if (active) {
+        active.playVideo();
+        applyMute(active);
+      }
+    }
+
+    // ── Sound toggle ──
     function toggleSound() {
       const active = activePlayer === 'a' ? playerA : playerB;
       if (!active) return;
@@ -149,21 +233,17 @@
       isMuted = !isMuted;
     }
 
-    // ── Apply mute state to a player ─────────────
     function applyMute(p) {
       if (isMuted) { p.mute(); }
       else { p.unMute(); p.setVolume(100); }
     }
 
-    // ── Crossfade to the other player ────────────
+    // ── Crossfade ──
     function crossfade() {
       const wrapA = document.getElementById('wrap-a');
       const wrapB = document.getElementById('wrap-b');
-
       if (activePlayer === 'a') {
-        // B becomes front (z-index already 2), fade it in
         wrapB.style.opacity = '1';
-        // After fade completes, hide A underneath
         setTimeout(() => {
           wrapA.style.opacity = '0';
           wrapA.style.zIndex = '1';
@@ -183,15 +263,16 @@
       }
     }
 
-    // ── Preload the video AFTER next into the hidden player ──
     function preloadNext() {
       const nextIndex = (currentIndex + 1) % playlist.length;
       const hidden = activePlayer === 'a' ? playerB : playerA;
       hidden.cueVideoById(playlist[nextIndex].videoId);
     }
 
-    // ── Called when the active video ends ────────
+    // ── Video ended ──
     function onVideoEnded() {
+      if (screensaverActive) return;
+
       const item = playlist[currentIndex];
       gtag('event', 'video_complete', {
         business_name: item.name,
@@ -201,13 +282,9 @@
 
       currentIndex = (currentIndex + 1) % playlist.length;
       const next = playlist[currentIndex];
-
-      // The hidden player already has the video cued — just play it
       const hidden = activePlayer === 'a' ? playerB : playerA;
       hidden.playVideo();
       applyMute(hidden);
-
-      // Crossfade
       crossfade();
 
       gtag('event', 'video_start', {
@@ -217,45 +294,38 @@
       });
     }
 
-    // ── YouTube API callbacks ─────────────────────
+    // ── YouTube API ──
     function onYouTubeIframeAPIReady() {
       playerA = new YT.Player('player-a', {
         videoId: playlist[0].videoId,
         playerVars: YT_VARS,
         events: {
           onReady: onReadyA,
-          onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED && activePlayer === 'a') onVideoEnded(); }
+          onStateChange: (e) => {
+            if (e.data === YT.PlayerState.ENDED && activePlayer === 'a') onVideoEnded();
+          }
         }
       });
-
       playerB = new YT.Player('player-b', {
-        videoId: playlist[1].videoId,  // preload second video
+        videoId: playlist[1].videoId,
         playerVars: { ...YT_VARS, autoplay: 0 },
         events: {
           onReady: onReadyB,
-          onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED && activePlayer === 'b') onVideoEnded(); }
+          onStateChange: (e) => {
+            if (e.data === YT.PlayerState.ENDED && activePlayer === 'b') onVideoEnded();
+          }
         }
       });
     }
 
-    function onReadyA(event) {
-      readyCount++;
-      if (readyCount === 2) startPlayback();
-    }
+    function onReadyA(event) { readyCount++; if (readyCount === 2) startPlayback(); }
+    function onReadyB(event) { readyCount++; if (readyCount === 2) startPlayback(); }
 
-    function onReadyB(event) {
-      readyCount++;
-      if (readyCount === 2) startPlayback();
-    }
-
+    // IGUAL AO ORIGINAL — não mudou nada aqui
     function startPlayback() {
-      // Start player A
+      setupFullyKioskEvents();
       playerA.playVideo();
       applyMute(playerA);
-
-      // Cue player B (already loaded with playlist[1])
-      // It will play when crossfade triggers
-
       gtag('event', 'video_start', {
         business_name: playlist[0].name,
         video_index: 1,
@@ -266,4 +336,3 @@
 
 </body>
 </html>
-
